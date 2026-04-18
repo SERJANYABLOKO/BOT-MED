@@ -177,9 +177,9 @@ async def sex_command(update: Update, context: CallbackContext):
     
     # Список возможных действий
     actions = [
-        f"🔥 {name1} разорвал {name2}у туза",
-        f"🍆 {name1} жёстко заглотнул у {name2}а",
-        f"💥 {name1} выебал во все дыры {name2}а"
+        f"🔥 {name1} разорвал(-а) {name2} туза",
+        f"🍆 {name1} жёстко заглотнул(-а) у {name2}",
+        f"💥 {name1} выебал(-а) во все дыры {name2}"
     ]
     
     # Выбираем случайное действие
