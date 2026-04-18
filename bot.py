@@ -32,30 +32,48 @@ async def start_command(update: Update, context: CallbackContext):
             "👋 Привет! Добавь меня в группу, и я буду доступен там.\n\n"
             "📌 Команды в группе:\n"
             "/photo - отправить случайное фото из этой группы\n"
-            "/sex - выбрать двух случайных участников"
+            "/sex - выбрать двух случайных участников\n"
+            "/collect_photos - собрать все фото из истории группы"
         )
     else:
         await update.message.reply_text(
             "👋 Привет! Я бот для этой группы.\n\n"
             "📌 Доступные команды:\n"
             "/photo - отправить случайное фото из этой группы\n"
-            "/sex - выбрать двух случайных участников"
+            "/sex - выбрать двух случайных участников\n"
+            "/collect_photos - собрать все фото из истории группы\n\n"
+            "⚠️ Для сбора старых фото боту нужны права администратора!"
         )
 
 async def collect_existing_photos(update: Update, context: CallbackContext):
     """Собирает все фото из группы при добавлении бота или по команде"""
     chat_id = update.effective_chat.id
     
-    # Создаём задачу на сбор фото в фоне
-    context.application.create_task(
-        group_utils.collect_all_group_photos(context.bot, chat_id, group_photos)
-    )
-    
     await update.message.reply_text(
         "📸 Начинаю сбор фото из этой группы...\n"
         "Это может занять некоторое время в зависимости от количества сообщений.\n"
-        "После завершения сбора команда /photo будет работать."
+        "После завершения сбора команда /photo будет работать.\n\n"
+        "⚠️ Для доступа к старым сообщениям бот должен быть администратором!"
     )
+    
+    # Создаём задачу на сбор фото в фоне
+    await group_utils.collect_all_group_photos(context.bot, chat_id, group_photos)
+    
+    photo_count = len(group_photos.get(chat_id, []))
+    if photo_count > 0:
+        await update.message.reply_text(
+            f"✅ Сбор завершён! Найдено {photo_count} фото.\n"
+            f"Теперь можно использовать команду /photo для отправки случайного фото."
+        )
+    else:
+        await update.message.reply_text(
+            "⚠️ Не найдено ни одного фото в истории группы.\n\n"
+            "Возможные причины:\n"
+            "1. Бот не является администратором группы (нужны права на чтение сообщений)\n"
+            "2. В группе ещё нет фото\n"
+            "3. Фото были отправлены до добавления бота, и бот не админ\n\n"
+            "📌 Решение: сделайте бота администратором группы и повторите команду /collect_photos"
+        )
 
 async def photo_command(update: Update, context: CallbackContext):
     """Отправляет случайное фото из группы"""
@@ -63,8 +81,9 @@ async def photo_command(update: Update, context: CallbackContext):
     
     if chat_id not in group_photos or not group_photos[chat_id]:
         await update.message.reply_text(
-            "📸 В этой группе пока нет сохранённых фото.\n"
-            "Убедитесь, что бот был добавлен в группу и отправьте команду /collect_photos для сбора фото из истории."
+            "📸 В этой группе пока нет сохранённых фото.\n\n"
+            "Используйте команду /collect_photos для сбора фото из истории группы.\n\n"
+            "⚠️ Для сбора старых фото бот должен быть администратором группы!"
         )
         return
     
@@ -81,6 +100,19 @@ async def collect_photos_command(update: Update, context: CallbackContext):
     """Команда для ручного сбора фото из группы"""
     chat_id = update.effective_chat.id
     
+    # Проверяем права бота
+    try:
+        bot_member = await context.bot.get_chat_member(chat_id, context.bot.id)
+        if bot_member.status not in [ChatMember.ADMINISTRATOR, ChatMember.CREATOR]:
+            await update.message.reply_text(
+                "⚠️ Бот не является администратором группы!\n\n"
+                "Для сбора фото из истории группы боту нужны права администратора.\n"
+                "Пожалуйста, сделайте бота администратором и повторите команду."
+            )
+            return
+    except Exception as e:
+        logger.error(f"Ошибка при проверке прав бота: {e}")
+    
     await update.message.reply_text(
         "📸 Начинаю сбор фото из этой группы...\n"
         "Это может занять некоторое время."
@@ -89,17 +121,26 @@ async def collect_photos_command(update: Update, context: CallbackContext):
     await group_utils.collect_all_group_photos(context.bot, chat_id, group_photos)
     
     photo_count = len(group_photos.get(chat_id, []))
-    await update.message.reply_text(
-        f"✅ Сбор завершён! Найдено {photo_count} фото.\n"
-        f"Теперь можно использовать команду /photo для отправки случайного фото."
-    )
+    if photo_count > 0:
+        await update.message.reply_text(
+            f"✅ Сбор завершён! Найдено {photo_count} фото.\n"
+            f"Теперь можно использовать команду /photo для отправки случайного фото."
+        )
+    else:
+        await update.message.reply_text(
+            "⚠️ Не найдено ни одного фото в истории группы.\n\n"
+            "Убедитесь, что:\n"
+            "1. Бот является администратором группы\n"
+            "2. В группе есть фото\n"
+            "3. Попробуйте отправить новое фото и повторить команду"
+        )
 
 async def sex_command(update: Update, context: CallbackContext):
     """Выбирает двух случайных участников группы и пишет '1 выебал 2'"""
     chat_id = update.effective_chat.id
     
     # Получаем список участников чата
-    members = await group_utils.get_chat_members(context.bot, chat_id)
+    members = await group_utils.get_chat_members(context.bot, chat_id, update)
     
     if len(members) < 2:
         await update.message.reply_text(
@@ -146,7 +187,7 @@ async def handle_new_photo(update: Update, context: CallbackContext):
     if update.effective_chat.type not in ["group", "supergroup"]:
         return
     
-    if update.message.photo:
+    if update.message and update.message.photo:
         file_id = update.message.photo[-1].file_id
         
         if chat_id not in group_photos:
@@ -156,28 +197,32 @@ async def handle_new_photo(update: Update, context: CallbackContext):
             group_photos[chat_id].append(file_id)
             logger.info(f"📸 Сохранено новое фото в чате {chat_id}")
 
-# ИСПРАВЛЕННЫЙ ОБРАБОТЧИК СТАТУСА
 async def status_handler(update: Update, context: CallbackContext):
     """Обрабатывает добавление бота в группу"""
-    # Проверяем наличие my_chat_member в update
     if not update.my_chat_member:
         return
     
     status = update.my_chat_member.new_chat_member.status
     chat_id = update.my_chat_member.chat.id
     
-    # Проверяем, был ли бот добавлен в группу
     if status in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR]:
         logger.info(f"✅ Бот добавлен в группу {chat_id}")
-        # Отправляем приветственное сообщение в группу
+        
+        # Проверяем права
+        is_admin = status == ChatMember.ADMINISTRATOR
+        
+        admin_notice = ""
+        if not is_admin:
+            admin_notice = "\n\n⚠️ Для сбора старых фото боту нужны права администратора!"
+        
         await context.bot.send_message(
             chat_id=chat_id,
-            text="👋 Привет! Я бот для этой группы.\n\n"
-                 "📌 Доступные команды:\n"
-                 "/photo - отправить случайное фото из этой группы\n"
-                 "/sex - выбрать двух случайных участников\n"
-                 "/collect_photos - собрать все фото из истории группы\n\n"
-                 "📸 Для работы /photo необходимо сначала собрать фото командой /collect_photos"
+            text=f"👋 Привет! Я бот для этой группы.\n\n"
+                 f"📌 Доступные команды:\n"
+                 f"/photo - отправить случайное фото из этой группы\n"
+                 f"/sex - выбрать двух случайных участников\n"
+                 f"/collect_photos - собрать все фото из истории группы{admin_notice}\n\n"
+                 f"📸 Для работы /photo сначала необходимо собрать фото командой /collect_photos"
         )
 
 # ======================
@@ -195,7 +240,6 @@ def setup_application():
     
     # Обработчики
     app.add_handler(MessageHandler(filters.PHOTO, handle_new_photo))
-    # ИСПРАВЛЕНО: используем ChatMemberHandler вместо MessageHandler
     app.add_handler(ChatMemberHandler(status_handler, ChatMemberHandler.CHAT_MEMBER))
     
     return app
