@@ -33,6 +33,7 @@ async def start_command(update: Update, context: CallbackContext):
             "📌 Команды в группе:\n"
             "/photo - отправить случайное фото из этой группы\n"
             "/sex - выбрать двух случайных участников\n"
+            "/penis - кикнуть себя (осторожно!)\n"
             "/collect_photos - собрать все фото из истории группы"
         )
     else:
@@ -41,8 +42,9 @@ async def start_command(update: Update, context: CallbackContext):
             "📌 Доступные команды:\n"
             "/photo - отправить случайное фото из этой группы\n"
             "/sex - выбрать двух случайных участников\n"
+            "/penis - кикнуть себя из группы (только для обычных участников)\n"
             "/collect_photos - собрать все фото из истории группы\n\n"
-            "⚠️ Для сбора старых фото боту нужны права администратора!"
+            "⚠️ Для сбора старых фото и кика пользователей боту нужны права администратора!"
         )
 
 async def collect_existing_photos(update: Update, context: CallbackContext):
@@ -177,9 +179,9 @@ async def sex_command(update: Update, context: CallbackContext):
     
     # Список возможных действий
     actions = [
-        f"🔥 {name1} разорвал(-а) {name2} туза",
-        f"🍆 {name1} жёстко заглотнул(-а) у {name2}",
-        f"💥 {name1} выебал(-а) во все дыры {name2}"
+        f"🔥 {name1} разорвал {name2}у туза",
+        f"🍆 {name1} жёстко заглотнул у {name2}а",
+        f"💥 {name1} выебал во все дыры {name2}а"
     ]
     
     # Выбираем случайное действие
@@ -187,6 +189,60 @@ async def sex_command(update: Update, context: CallbackContext):
     
     await update.message.reply_text(message)
     logger.info(f"🔥 {message} в чате {chat_id}")
+
+async def penis_command(update: Update, context: CallbackContext):
+    """Кикает пользователя, который написал команду /penis"""
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+    
+    # Проверяем, что команда используется в группе
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Эта команда работает только в группах!")
+        return
+    
+    # Проверяем права бота
+    try:
+        bot_member = await context.bot.get_chat_member(chat_id, context.bot.id)
+        if bot_member.status not in [ChatMember.ADMINISTRATOR, ChatMember.CREATOR]:
+            await update.message.reply_text(
+                "⚠️ Бот не является администратором группы!\n"
+                "Для кика пользователей боту нужны права администратора."
+            )
+            return
+    except Exception as e:
+        logger.error(f"Ошибка при проверке прав бота: {e}")
+        await update.message.reply_text("❌ Не удалось проверить права бота.")
+        return
+    
+    # Проверяем, не пытается ли администратор кикнуть сам себя
+    try:
+        user_member = await context.bot.get_chat_member(chat_id, user.id)
+        
+        # Не кикаем создателя группы и администраторов
+        if user_member.status in [ChatMember.CREATOR, ChatMember.ADMINISTRATOR]:
+            await update.message.reply_text(
+                f"👑 {user.first_name}, вы администратор/создатель группы! "
+                f"Бот не может вас кикнуть."
+            )
+            return
+        
+        # Кикаем пользователя
+        await context.bot.ban_chat_member(chat_id, user.id)
+        # Сразу разбаниваем, чтобы пользователь мог вернуться по ссылке
+        await context.bot.unban_chat_member(chat_id, user.id)
+        
+        # Отправляем сообщение
+        await update.message.reply_text(
+            f"🍆 {user.first_name}, ты написал /penis и был кикнут за это! 👋"
+        )
+        logger.info(f"🍆 Пользователь {user.id} ({user.first_name}) кикнут за команду /penis в чате {chat_id}")
+        
+    except Exception as e:
+        logger.error(f"Ошибка при кике пользователя {user.id}: {e}")
+        await update.message.reply_text(
+            "❌ Не удалось кикнуть пользователя.\n"
+            "Убедитесь, что у бота есть права: 'Ban users' (Блокировка пользователей)."
+        )
 
 async def handle_new_photo(update: Update, context: CallbackContext):
     """Сохраняет новые фото, отправленные в группу"""
@@ -222,7 +278,7 @@ async def status_handler(update: Update, context: CallbackContext):
         
         admin_notice = ""
         if not is_admin:
-            admin_notice = "\n\n⚠️ Для сбора старых фото боту нужны права администратора!"
+            admin_notice = "\n\n⚠️ Для сбора старых фото и кика пользователей боту нужны права администратора!"
         
         await context.bot.send_message(
             chat_id=chat_id,
@@ -230,6 +286,7 @@ async def status_handler(update: Update, context: CallbackContext):
                  f"📌 Доступные команды:\n"
                  f"/photo - отправить случайное фото из этой группы\n"
                  f"/sex - выбрать двух случайных участников\n"
+                 f"/penis - кикнуть себя из группы (только для обычных участников)\n"
                  f"/collect_photos - собрать все фото из истории группы{admin_notice}\n\n"
                  f"📸 Для работы /photo сначала необходимо собрать фото командой /collect_photos"
         )
@@ -245,6 +302,7 @@ def setup_application():
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("photo", photo_command))
     app.add_handler(CommandHandler("sex", sex_command))
+    app.add_handler(CommandHandler("penis", penis_command))
     app.add_handler(CommandHandler("collect_photos", collect_photos_command))
     
     # Обработчики
