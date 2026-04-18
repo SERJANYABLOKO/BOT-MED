@@ -1,60 +1,63 @@
 import logging
 import asyncio
 from typing import List, Dict, Optional
-from telegram import Bot, ChatMember, User
+from telegram import Bot, ChatMember, User, Update
 
 logger = logging.getLogger(__name__)
 
-async def get_chat_members(bot: Bot, chat_id: int) -> List[User]:
+async def get_chat_members(bot: Bot, chat_id: int, update: Update = None) -> List[User]:
     """
-    Получает список всех участников чата (не админов, а обычных участников)
+    Получает список участников чата из последних сообщений
     """
     members = []
+    user_ids = set()
+    
     try:
-        # Получаем количество участников
-        chat = await bot.get_chat(chat_id)
-        
-        # Получаем участников через get_chat_administrators (только админы)
+        # Получаем администраторов
         admins = await bot.get_chat_administrators(chat_id)
-        admin_ids = {admin.user.id for admin in admins}
-        
-        # Для обычных групп нужно использовать другой подход
-        # К сожалению, Telegram API не даёт прямой доступ к списку всех участников группы
-        # Поэтому собираем участников из сообщений или используем другой метод
-        
-        # Вместо этого, для простоты, будем использовать:
-        # 1. Администраторов
-        # 2. Бота (если нужно)
-        # 3. Добавим виртуальный список или будем собирать из активных пользователей
-        
-        # Базовый список - администраторы
         for admin in admins:
-            if admin.user.id != bot.id:  # исключаем бота
+            if admin.user.id != bot.id and admin.user.id not in user_ids:
+                user_ids.add(admin.user.id)
                 members.append(admin.user)
         
-        # Если администраторов меньше 2, добавляем бота как временного участника
-        # (в реальности бот не участвует в "выeбал")
-        if len(members) < 2 and bot.id not in [m.id for m in members]:
-            # Добавляем заглушку - бот не будет выбран, если есть другие
-            pass
+        # Собираем участников из последних сообщений
+        if update and update.effective_chat:
+            try:
+                # Получаем последние 200 сообщений
+                async for message in bot.get_chat_history(chat_id, limit=200):
+                    if message.from_user and message.from_user.id != bot.id:
+                        if message.from_user.id not in user_ids:
+                            user_ids.add(message.from_user.id)
+                            members.append(message.from_user)
+                    # Проверяем ответы на сообщения
+                    if message.reply_to_message and message.reply_to_message.from_user:
+                        if message.reply_to_message.from_user.id != bot.id:
+                            if message.reply_to_message.from_user.id not in user_ids:
+                                user_ids.add(message.reply_to_message.from_user.id)
+                                members.append(message.reply_to_message.from_user)
+            except Exception as e:
+                logger.warning(f"Не удалось собрать участников из истории: {e}")
+        
+        # Если участников всё ещё мало, добавляем отправителя текущего сообщения
+        if len(members) < 2 and update and update.effective_message and update.effective_message.from_user:
+            if update.effective_message.from_user.id not in user_ids:
+                members.append(update.effective_message.from_user)
             
     except Exception as e:
         logger.error(f"Ошибка при получении участников чата {chat_id}: {e}")
     
-    # Если участников всё ещё мало, добавляем виртуальных для демонстрации
-    # В реальном боте вы можете хранить список активных пользователей
+    # Если всё ещё нет участников, создаём заглушку для тестирования
     if len(members) < 2:
-        # Создаём виртуальных пользователей для демонстрации (только если нет реальных)
-        # ВАЖНО: В реальном боте нужно собирать пользователей из сообщений
+        logger.warning(f"Недостаточно участников в чате {chat_id}, используются тестовые данные")
         if not members:
-            members.append(User(id=1, first_name="Пользователь1", is_bot=False))
-            members.append(User(id=2, first_name="Пользователь2", is_bot=False))
-            members.append(User(id=3, first_name="Пользователь3", is_bot=False))
-            logger.warning(f"Использованы виртуальные пользователи для чата {chat_id}")
+            members.append(User(id=1, first_name="Участник1", is_bot=False, username="user1"))
+            members.append(User(id=2, first_name="Участник2", is_bot=False, username="user2"))
+        elif len(members) == 1:
+            members.append(User(id=3, first_name="Участник3", is_bot=False, username="user3"))
     
     return members
 
-async def collect_all_group_photos(bot: Bot, chat_id: int, storage: Dict[int, List[str]], limit: int = 1000):
+async def collect_all_group_photos(bot: Bot, chat_id: int, storage: Dict[int, List[str]], limit: int = 500):
     """
     Собирает все фото из истории группы
     """
@@ -62,20 +65,26 @@ async def collect_all_group_photos(bot: Bot, chat_id: int, storage: Dict[int, Li
         storage[chat_id] = []
     
     collected = set(storage[chat_id])
-    offset_id = 0
     processed = 0
+    last_message_id = None
     
     logger.info(f"Начинаем сбор фото в чате {chat_id}")
     
     try:
-        while True:
+        while processed < limit:
             try:
                 # Получаем сообщения из чата
-                messages = await bot.get_chat_history(
-                    chat_id=chat_id,
-                    limit=min(100, limit - processed),
-                    offset=offset_id
-                )
+                if last_message_id:
+                    messages = await bot.get_chat_history(
+                        chat_id=chat_id,
+                        limit=min(100, limit - processed),
+                        until_message_id=last_message_id
+                    )
+                else:
+                    messages = await bot.get_chat_history(
+                        chat_id=chat_id,
+                        limit=min(100, limit - processed)
+                    )
                 
                 if not messages:
                     break
@@ -89,19 +98,16 @@ async def collect_all_group_photos(bot: Bot, chat_id: int, storage: Dict[int, Li
                         if file_id not in collected:
                             collected.add(file_id)
                             storage[chat_id].append(file_id)
+                            logger.debug(f"Найдено фото {file_id} в сообщении {message.message_id}")
                     
-                    # Также проверяем медиагруппы (альбомы)
-                    if message.media_group_id and message.photo:
-                        # Уже обработано выше
-                        pass
-                    
-                    offset_id = message.message_id
+                    # Сохраняем ID последнего сообщения для пагинации
+                    last_message_id = message.message_id
                 
-                if processed >= limit:
+                if len(messages) < 100:
                     break
                     
                 # Небольшая задержка, чтобы не превысить лимиты API
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.3)
                 
             except Exception as e:
                 logger.error(f"Ошибка при сборе сообщений в чате {chat_id}: {e}")
@@ -157,3 +163,26 @@ def load_photos_from_file(chat_id: int, storage: Dict[int, List[str]], filename:
             logger.info(f"Загружено {len(photos)} фото из {filename}")
             return True
     return False
+
+async def test_bot_permissions(bot: Bot, chat_id: int) -> dict:
+    """
+    Проверяет права бота в группе
+    """
+    try:
+        bot_member = await bot.get_chat_member(chat_id, bot.id)
+        chat = await bot.get_chat(chat_id)
+        
+        return {
+            "is_admin": bot_member.status in [ChatMember.ADMINISTRATOR, ChatMember.CREATOR],
+            "can_read_messages": bot_member.status != ChatMember.RESTRICTED,
+            "status": bot_member.status,
+            "chat_type": chat.type
+        }
+    except Exception as e:
+        logger.error(f"Ошибка при проверке прав: {e}")
+        return {
+            "is_admin": False,
+            "can_read_messages": False,
+            "status": "unknown",
+            "error": str(e)
+        }
