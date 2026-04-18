@@ -136,7 +136,7 @@ async def collect_photos_command(update: Update, context: CallbackContext):
         )
 
 async def sex_command(update: Update, context: CallbackContext):
-    """Выбирает двух случайных участников группы и пишет '1 выебал 2'"""
+    """Выбирает двух случайных участников группы и случайное действие"""
     chat_id = update.effective_chat.id
     
     # Получаем список участников чата
@@ -168,14 +168,23 @@ async def sex_command(update: Update, context: CallbackContext):
             name2 = group_utils.get_user_display_name(user2)
         elif len(non_bot_members) == 1:
             await update.message.reply_text(
-                f"👥 {group_utils.get_user_display_name(non_bot_members[0])} не может выебать сам себя! Добавьте в группу больше людей."
+                f"👥 {group_utils.get_user_display_name(non_bot_members[0])} не может совершить действие сам с собой! Добавьте в группу больше людей."
             )
             return
         else:
             await update.message.reply_text("👥 В группе нет других участников, кроме бота.")
             return
     
-    message = f"🔥 {name1} выебал {name2}"
+    # Список возможных действий
+    actions = [
+        f"🔥 {name1} разорвал {name2}у туза",
+        f"🍆 {name1} жёстко заглотнул у {name2}а",
+        f"💥 {name1} выебал во все дыры {name2}а"
+    ]
+    
+    # Выбираем случайное действие
+    message = random.choice(actions)
+    
     await update.message.reply_text(message)
     logger.info(f"🔥 {message} в чате {chat_id}")
 
