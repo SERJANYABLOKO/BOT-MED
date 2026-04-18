@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 async def get_chat_members(bot: Bot, chat_id: int, update: Update = None) -> List[User]:
     """
-    Получает список всех участников чата (не только админов)
+    Получает список всех участников чата (всех, не только админов)
     """
     members = []
     user_ids = set()
@@ -22,46 +22,73 @@ async def get_chat_members(bot: Bot, chat_id: int, update: Update = None) -> Lis
         
         logger.info(f"Найдено {len(admins)} администраторов в чате {chat_id}")
         
-        # 2. Пытаемся получить список всех участников (для супергрупп)
+        # 2. Получаем всех участников через get_chat_members (до 200 человек)
         try:
-            # Для супергрупп можно получить до 200 участников через get_chat
-            chat = await bot.get_chat(chat_id)
-            
-            # Если это супергруппа, пробуем получить участников через get_chat_members
-            if chat.type in ["supergroup", "group"]:
-                # Получаем первых 200 участников (максимум, который дает Telegram API)
-                async for member in bot.get_chat_members(chat_id, limit=200):
+            offset = 0
+            while True:
+                # Получаем участников с пагинацией (по 200 за раз)
+                chat_members = await bot.get_chat_members(
+                    chat_id=chat_id, 
+                    limit=200,
+                    offset=offset
+                )
+                
+                if not chat_members:
+                    break
+                
+                for member in chat_members:
                     if member.user.id != bot.id and member.user.id not in user_ids:
                         user_ids.add(member.user.id)
                         members.append(member.user)
-                        if len(members) >= 200:  # Ограничиваем для производительности
-                            break
-                logger.info(f"Получено {len(members)} участников через get_chat_members")
+                
+                offset += len(chat_members)
+                
+                # Если получили меньше 200, значит это последняя страница
+                if len(chat_members) < 200:
+                    break
+                    
+                # Небольшая задержка, чтобы не превысить лимиты API
+                await asyncio.sleep(0.1)
+                
+            logger.info(f"Получено {len(members)} участников через get_chat_members")
+            
         except Exception as e:
             logger.warning(f"Не удалось получить всех участников через get_chat_members: {e}")
-        
-        # 3. Собираем участников из последних сообщений (если нужно больше)
-        if len(members) < 10 and update and update.effective_chat:
+            
+            # Если не сработал get_chat_members, пробуем альтернативный метод
             try:
-                # Получаем последние 500 сообщений для сбора активных пользователей
+                # Получаем информацию о чате
+                chat = await bot.get_chat(chat_id)
+                logger.info(f"Чат {chat_id} типа {chat.type}")
+                
+                # Для супергрупп пробуем получить участников через другой подход
+                if chat.type in ["supergroup", "group"]:
+                    # Пытаемся получить участников через get_chat_members с маленьким лимитом
+                    async for member in bot.get_chat_members(chat_id, limit=100):
+                        if member.user.id != bot.id and member.user.id not in user_ids:
+                            user_ids.add(member.user.id)
+                            members.append(member.user)
+                    logger.info(f"Получено {len(members)} участников через итератор")
+            except Exception as e2:
+                logger.warning(f"Не удалось получить участников через альтернативный метод: {e2}")
+        
+        # 3. Добавляем автора текущего сообщения, если его ещё нет
+        if update and update.effective_message and update.effective_message.from_user:
+            if update.effective_message.from_user.id not in user_ids:
+                user_ids.add(update.effective_message.from_user.id)
+                members.append(update.effective_message.from_user)
+        
+        # 4. Если участников всё ещё мало, пробуем добавить из истории сообщений (только как запасной вариант)
+        if len(members) < 5 and update and update.effective_chat:
+            try:
                 active_users = set()
-                async for message in bot.get_chat_history(chat_id, limit=500):
-                    # Добавляем автора сообщения
+                async for message in bot.get_chat_history(chat_id, limit=100):
                     if message.from_user and message.from_user.id != bot.id:
                         active_users.add(message.from_user.id)
-                    
-                    # Добавляем того, кому отвечают
                     if message.reply_to_message and message.reply_to_message.from_user:
                         if message.reply_to_message.from_user.id != bot.id:
                             active_users.add(message.reply_to_message.from_user.id)
-                    
-                    # Добавляем упомянутых пользователей
-                    if message.entities:
-                        for entity in message.entities:
-                            if entity.type == "mention" and message.text:
-                                pass  # Сложно получить пользователя по mention
                 
-                # Получаем информацию о пользователях
                 for user_id in active_users:
                     if user_id not in user_ids:
                         try:
@@ -75,27 +102,10 @@ async def get_chat_members(bot: Bot, chat_id: int, update: Update = None) -> Lis
             except Exception as e:
                 logger.warning(f"Не удалось собрать участников из истории: {e}")
         
-        # 4. Добавляем отправителя текущего сообщения, если его ещё нет
-        if update and update.effective_message and update.effective_message.from_user:
-            if update.effective_message.from_user.id not in user_ids:
-                user_ids.add(update.effective_message.from_user.id)
-                members.append(update.effective_message.from_user)
-        
-        # 5. Для обычных групп (не супергрупп) пытаемся получить участников через разные методы
-        if len(members) < 3:
-            try:
-                # Пробуем получить участников через get_chat_administrators (уже сделали)
-                # Пробуем получить приглашённых пользователей
-                chat = await bot.get_chat(chat_id)
-                if chat.invite_link:
-                    logger.info("У группы есть инвайт-ссылка, но получить участников по ней нельзя")
-            except:
-                pass
-        
     except Exception as e:
         logger.error(f"Ошибка при получении участников чата {chat_id}: {e}")
     
-    # Удаляем дубликаты (на всякий случай)
+    # Удаляем дубликаты
     unique_members = []
     seen_ids = set()
     for member in members:
@@ -108,10 +118,9 @@ async def get_chat_members(bot: Bot, chat_id: int, update: Update = None) -> Lis
     # Логируем результат
     logger.info(f"Всего собрано {len(members)} уникальных участников в чате {chat_id}")
     
-    # Если всё ещё нет участников, создаём заглушку для тестирования
+    # Если участников всё ещё нет, создаём заглушку для тестирования
     if len(members) < 2:
         logger.warning(f"Недостаточно участников в чате {chat_id}, используются тестовые данные")
-        # Создаём тестовых пользователей, если нет реальных
         if not members:
             members.append(User(id=1, first_name="Участник1", is_bot=False))
             members.append(User(id=2, first_name="Участник2", is_bot=False))
@@ -120,6 +129,50 @@ async def get_chat_members(bot: Bot, chat_id: int, update: Update = None) -> Lis
             members.append(User(id=3, first_name="Участник3", is_bot=False))
     
     return members
+
+
+async def get_all_chat_members_direct(bot: Bot, chat_id: int) -> List[User]:
+    """
+    Прямой метод получения всех участников чата (альтернативный)
+    """
+    members = []
+    user_ids = set()
+    
+    try:
+        # Пробуем получить участников через get_chat_members с пагинацией
+        offset = 0
+        while True:
+            try:
+                chat_members = await bot.get_chat_members(
+                    chat_id=chat_id,
+                    limit=200,
+                    offset=offset
+                )
+                
+                if not chat_members:
+                    break
+                
+                for member in chat_members:
+                    if member.user.id != bot.id and member.user.id not in user_ids:
+                        user_ids.add(member.user.id)
+                        members.append(member.user)
+                
+                offset += len(chat_members)
+                
+                if len(chat_members) < 200:
+                    break
+                    
+                await asyncio.sleep(0.1)
+                
+            except Exception as e:
+                logger.error(f"Ошибка при получении участников с offset {offset}: {e}")
+                break
+                
+    except Exception as e:
+        logger.error(f"Ошибка в get_all_chat_members_direct: {e}")
+    
+    return members
+
 
 async def collect_all_group_photos(bot: Bot, chat_id: int, storage: Dict[int, List[str]], limit: int = 500):
     """
@@ -137,7 +190,6 @@ async def collect_all_group_photos(bot: Bot, chat_id: int, storage: Dict[int, Li
     try:
         while processed < limit:
             try:
-                # Получаем сообщения из чата
                 if last_message_id:
                     messages = await bot.get_chat_history(
                         chat_id=chat_id,
@@ -156,7 +208,6 @@ async def collect_all_group_photos(bot: Bot, chat_id: int, storage: Dict[int, Li
                 for message in messages:
                     processed += 1
                     
-                    # Проверяем наличие фото
                     if message.photo:
                         file_id = message.photo[-1].file_id
                         if file_id not in collected:
@@ -164,13 +215,11 @@ async def collect_all_group_photos(bot: Bot, chat_id: int, storage: Dict[int, Li
                             storage[chat_id].append(file_id)
                             logger.debug(f"Найдено фото {file_id} в сообщении {message.message_id}")
                     
-                    # Сохраняем ID последнего сообщения для пагинации
                     last_message_id = message.message_id
                 
                 if len(messages) < 100:
                     break
                     
-                # Небольшая задержка, чтобы не превысить лимиты API
                 await asyncio.sleep(0.3)
                 
             except Exception as e:
@@ -183,6 +232,7 @@ async def collect_all_group_photos(bot: Bot, chat_id: int, storage: Dict[int, Li
     logger.info(f"Сбор фото в чате {chat_id} завершён. Найдено {len(storage[chat_id])} фото")
     return storage[chat_id]
 
+
 def get_user_display_name(user: User) -> str:
     """
     Возвращает отображаемое имя пользователя
@@ -193,6 +243,7 @@ def get_user_display_name(user: User) -> str:
         return user.full_name
     else:
         return f"Пользователь {user.id}"
+
 
 def save_photos_to_file(chat_id: int, storage: Dict[int, List[str]], filename: str = None):
     """
@@ -209,6 +260,7 @@ def save_photos_to_file(chat_id: int, storage: Dict[int, List[str]], filename: s
         logger.info(f"Сохранено {len(storage[chat_id])} фото в {filename}")
         return True
     return False
+
 
 def load_photos_from_file(chat_id: int, storage: Dict[int, List[str]], filename: str = None):
     """
@@ -227,6 +279,7 @@ def load_photos_from_file(chat_id: int, storage: Dict[int, List[str]], filename:
             logger.info(f"Загружено {len(photos)} фото из {filename}")
             return True
     return False
+
 
 async def test_bot_permissions(bot: Bot, chat_id: int) -> dict:
     """
