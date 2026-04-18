@@ -3,7 +3,7 @@ import logging
 import random
 import asyncio
 from telegram import Update, ChatMember
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ChatMemberHandler
 from aiohttp import web
 import group_utils
 
@@ -156,14 +156,17 @@ async def handle_new_photo(update: Update, context: CallbackContext):
             group_photos[chat_id].append(file_id)
             logger.info(f"📸 Сохранено новое фото в чате {chat_id}")
 
+# ИСПРАВЛЕННЫЙ ОБРАБОТЧИК СТАТУСА
 async def status_handler(update: Update, context: CallbackContext):
     """Обрабатывает добавление бота в группу"""
+    # Проверяем наличие my_chat_member в update
     if not update.my_chat_member:
         return
     
     status = update.my_chat_member.new_chat_member.status
     chat_id = update.my_chat_member.chat.id
     
+    # Проверяем, был ли бот добавлен в группу
     if status in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR]:
         logger.info(f"✅ Бот добавлен в группу {chat_id}")
         # Отправляем приветственное сообщение в группу
@@ -192,7 +195,8 @@ def setup_application():
     
     # Обработчики
     app.add_handler(MessageHandler(filters.PHOTO, handle_new_photo))
-    app.add_handler(MessageHandler(filters.StatusUpdate.MY_CHAT_MEMBER, status_handler))
+    # ИСПРАВЛЕНО: используем ChatMemberHandler вместо MessageHandler
+    app.add_handler(ChatMemberHandler(status_handler, ChatMemberHandler.CHAT_MEMBER))
     
     return app
 
@@ -252,6 +256,7 @@ async def main():
         
         logger.info(f"✅ Бот запущен на порту {PORT}")
         await asyncio.Event().wait()
+        
     else:
         logger.warning("⚠️ WEBHOOK_URL не указан, используем polling")
         await ptb_app.start()
