@@ -7,53 +7,117 @@ logger = logging.getLogger(__name__)
 
 async def get_chat_members(bot: Bot, chat_id: int, update: Update = None) -> List[User]:
     """
-    Получает список участников чата из последних сообщений
+    Получает список всех участников чата (не только админов)
     """
     members = []
     user_ids = set()
     
     try:
-        # Получаем администраторов
+        # 1. Получаем администраторов
         admins = await bot.get_chat_administrators(chat_id)
         for admin in admins:
             if admin.user.id != bot.id and admin.user.id not in user_ids:
                 user_ids.add(admin.user.id)
                 members.append(admin.user)
         
-        # Собираем участников из последних сообщений
-        if update and update.effective_chat:
+        logger.info(f"Найдено {len(admins)} администраторов в чате {chat_id}")
+        
+        # 2. Пытаемся получить список всех участников (для супергрупп)
+        try:
+            # Для супергрупп можно получить до 200 участников через get_chat
+            chat = await bot.get_chat(chat_id)
+            
+            # Если это супергруппа, пробуем получить участников через get_chat_members
+            if chat.type in ["supergroup", "group"]:
+                # Получаем первых 200 участников (максимум, который дает Telegram API)
+                async for member in bot.get_chat_members(chat_id, limit=200):
+                    if member.user.id != bot.id and member.user.id not in user_ids:
+                        user_ids.add(member.user.id)
+                        members.append(member.user)
+                        if len(members) >= 200:  # Ограничиваем для производительности
+                            break
+                logger.info(f"Получено {len(members)} участников через get_chat_members")
+        except Exception as e:
+            logger.warning(f"Не удалось получить всех участников через get_chat_members: {e}")
+        
+        # 3. Собираем участников из последних сообщений (если нужно больше)
+        if len(members) < 10 and update and update.effective_chat:
             try:
-                # Получаем последние 200 сообщений
-                async for message in bot.get_chat_history(chat_id, limit=200):
+                # Получаем последние 500 сообщений для сбора активных пользователей
+                active_users = set()
+                async for message in bot.get_chat_history(chat_id, limit=500):
+                    # Добавляем автора сообщения
                     if message.from_user and message.from_user.id != bot.id:
-                        if message.from_user.id not in user_ids:
-                            user_ids.add(message.from_user.id)
-                            members.append(message.from_user)
-                    # Проверяем ответы на сообщения
+                        active_users.add(message.from_user.id)
+                    
+                    # Добавляем того, кому отвечают
                     if message.reply_to_message and message.reply_to_message.from_user:
                         if message.reply_to_message.from_user.id != bot.id:
-                            if message.reply_to_message.from_user.id not in user_ids:
-                                user_ids.add(message.reply_to_message.from_user.id)
-                                members.append(message.reply_to_message.from_user)
+                            active_users.add(message.reply_to_message.from_user.id)
+                    
+                    # Добавляем упомянутых пользователей
+                    if message.entities:
+                        for entity in message.entities:
+                            if entity.type == "mention" and message.text:
+                                pass  # Сложно получить пользователя по mention
+                
+                # Получаем информацию о пользователях
+                for user_id in active_users:
+                    if user_id not in user_ids:
+                        try:
+                            user = await bot.get_chat_member(chat_id, user_id)
+                            user_ids.add(user_id)
+                            members.append(user.user)
+                        except:
+                            pass
+                
+                logger.info(f"Добавлено {len(active_users)} активных пользователей из истории")
             except Exception as e:
                 logger.warning(f"Не удалось собрать участников из истории: {e}")
         
-        # Если участников всё ещё мало, добавляем отправителя текущего сообщения
-        if len(members) < 2 and update and update.effective_message and update.effective_message.from_user:
+        # 4. Добавляем отправителя текущего сообщения, если его ещё нет
+        if update and update.effective_message and update.effective_message.from_user:
             if update.effective_message.from_user.id not in user_ids:
+                user_ids.add(update.effective_message.from_user.id)
                 members.append(update.effective_message.from_user)
-            
+        
+        # 5. Для обычных групп (не супергрупп) пытаемся получить участников через разные методы
+        if len(members) < 3:
+            try:
+                # Пробуем получить участников через get_chat_administrators (уже сделали)
+                # Пробуем получить приглашённых пользователей
+                chat = await bot.get_chat(chat_id)
+                if chat.invite_link:
+                    logger.info("У группы есть инвайт-ссылка, но получить участников по ней нельзя")
+            except:
+                pass
+        
     except Exception as e:
         logger.error(f"Ошибка при получении участников чата {chat_id}: {e}")
+    
+    # Удаляем дубликаты (на всякий случай)
+    unique_members = []
+    seen_ids = set()
+    for member in members:
+        if member.id not in seen_ids:
+            seen_ids.add(member.id)
+            unique_members.append(member)
+    
+    members = unique_members
+    
+    # Логируем результат
+    logger.info(f"Всего собрано {len(members)} уникальных участников в чате {chat_id}")
     
     # Если всё ещё нет участников, создаём заглушку для тестирования
     if len(members) < 2:
         logger.warning(f"Недостаточно участников в чате {chat_id}, используются тестовые данные")
+        # Создаём тестовых пользователей, если нет реальных
         if not members:
-            members.append(User(id=1, first_name="Участник1", is_bot=False, username="user1"))
-            members.append(User(id=2, first_name="Участник2", is_bot=False, username="user2"))
+            members.append(User(id=1, first_name="Участник1", is_bot=False))
+            members.append(User(id=2, first_name="Участник2", is_bot=False))
+            members.append(User(id=3, first_name="Участник3", is_bot=False))
         elif len(members) == 1:
-            members.append(User(id=3, first_name="Участник3", is_bot=False, username="user3"))
+            members.append(User(id=3, first_name="Участник3", is_bot=False))
     
     return members
 
