@@ -22,6 +22,333 @@ group_photos = {}
 # ======================
 # Обработчики команд
 # ======================
+# ======================
+# НОВЫЕ КОМАНДЫ
+# ======================
+
+async def drink_command(update: Update, context: CallbackContext):
+    """Выбирает, кто сегодня заказывает алкоголь"""
+    chat_id = update.effective_chat.id
+    
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Эта команда работает только в группах!")
+        return
+    
+    members = await group_utils.get_chat_members(context.bot, chat_id, update)
+    
+    if not members:
+        await update.message.reply_text("👥 Не удалось найти участников в группе.")
+        return
+    
+    # Фильтруем бота
+    non_bot_members = [m for m in members if m.id != context.bot.id]
+    if not non_bot_members:
+        await update.message.reply_text("🤖 В группе нет людей, кроме бота!")
+        return
+    
+    chosen = random.choice(non_bot_members)
+    name = group_utils.get_user_display_name(chosen)
+    
+    actions = [
+        f"🍺 Сегодня алкоголь заказывает {name}! Готовь кошелёк! 💸",
+        f"🥃 {name}, твоя очередь раскошелиться на выпивку! 🍻",
+        f"🍾 Бармен! {name} сегодня платит за всё! 🎉",
+        f"💳 {name}, доставай карту - сегодня ты спонсор вечеринки! 🥂"
+    ]
+    
+    message = random.choice(actions)
+    await update.message.reply_text(message)
+    logger.info(f"🍺 Выбран покупатель алкоголя: {name} в чате {chat_id}")
+
+async def kiss_command(update: Update, context: CallbackContext):
+    """Романтический поцелуй между двумя участниками"""
+    chat_id = update.effective_chat.id
+    
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Эта команда работает только в группах!")
+        return
+    
+    members = await group_utils.get_chat_members(context.bot, chat_id, update)
+    
+    if len(members) < 2:
+        await update.message.reply_text("👥 В группе меньше 2 человек для поцелуя!")
+        return
+    
+    # Выбираем двух разных участников
+    selected = random.sample(members, 2)
+    user1, user2 = selected[0], selected[1]
+    
+    name1 = group_utils.get_user_display_name(user1)
+    name2 = group_utils.get_user_display_name(user2)
+    
+    actions = [
+        f"💏 {name1} и {name2} страстно поцеловались! 😘",
+        f"💋 {name1} чмокнул(а) {name2} в щёчку! 🥰",
+        f"🔥 {name1} и {name2} - новая парочка в группе! 💕",
+        f"😳 {name1} украл(а) поцелуй у {name2}! 💋"
+    ]
+    
+    message = random.choice(actions)
+    await update.message.reply_text(message)
+    logger.info(f"💏 Поцелуй между {name1} и {name2} в чате {chat_id}")
+
+async def fight_command(update: Update, context: CallbackContext):
+    """Битва между двумя участниками"""
+    chat_id = update.effective_chat.id
+    
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Эта команда работает только в группах!")
+        return
+    
+    members = await group_utils.get_chat_members(context.bot, chat_id, update)
+    
+    if len(members) < 2:
+        await update.message.reply_text("👥 Нужно минимум 2 бойца для битвы!")
+        return
+    
+    # Выбираем двух бойцов
+    fighters = random.sample(members, 2)
+    fighter1, fighter2 = fighters[0], fighters[1]
+    
+    name1 = group_utils.get_user_display_name(fighter1)
+    name2 = group_utils.get_user_display_name(fighter2)
+    
+    # Определяем победителя
+    winner = random.choice([fighter1, fighter2])
+    winner_name = group_utils.get_user_display_name(winner)
+    
+    actions = [
+        f"🥊 БИТВА! {name1} VS {name2}\n\n💪 ПОБЕДИТЕЛЬ: {winner_name}! 🏆",
+        f"⚔️ {name1} и {name2} сражаются не на жизнь, а на смерть!\n\n🎉 {winner_name} выходит победителем! 🎉",
+        f"💥 {name1} наносит удар! {name2} контратакует!\n\n🏅 Побеждает {winner_name}! 🔥",
+        f"👊 {name1} и {name2} устроили замес!\n\n✨ Чемпион сегодня - {winner_name}! ✨"
+    ]
+    
+    message = random.choice(actions)
+    await update.message.reply_text(message)
+    logger.info(f"🥊 Битва между {name1} и {name2}, победил {winner_name} в чате {chat_id}")
+
+async def marry_command(update: Update, context: CallbackContext):
+    """Женит двух случайных участников"""
+    chat_id = update.effective_chat.id
+    
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Эта команда работает только в группах!")
+        return
+    
+    members = await group_utils.get_chat_members(context.bot, chat_id, update)
+    
+    if len(members) < 2:
+        await update.message.reply_text("👥 Нужно минимум 2 человека для свадьбы!")
+        return
+    
+    # Выбираем пару
+    couple = random.sample(members, 2)
+    spouse1, spouse2 = couple[0], couple[1]
+    
+    name1 = group_utils.get_user_display_name(spouse1)
+    name2 = group_utils.get_user_display_name(spouse2)
+    
+    actions = [
+        f"💍 {name1} и {name2} поженились! Поздравляем молодожёнов! 🎉🥂",
+        f"👰‍♀️🤵‍♂️ Объявляем {name1} и {name2} мужем и женой! 💒",
+        f"💕 {name1} сделал(а) предложение {name2}! Согласие получено! 💍",
+        f"🎊 СВАДЬБА! {name1} + {name2} = любовь навеки! 💑"
+    ]
+    
+    message = random.choice(actions)
+    await update.message.reply_text(message)
+    logger.info(f"💍 Свадьба между {name1} и {name2} в чате {chat_id}")
+    
+    # Сохраняем пару в контексте (опционально)
+    if 'married_couples' not in context.bot_data:
+        context.bot_data['married_couples'] = {}
+    context.bot_data['married_couples'][f"{spouse1.id}_{spouse2.id}"] = True
+
+async def roast_command(update: Update, context: CallbackContext):
+    """Подкалывает случайного участника"""
+    chat_id = update.effective_chat.id
+    
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Эта команда работает только в группах!")
+        return
+    
+    members = await group_utils.get_chat_members(context.bot, chat_id, update)
+    
+    if not members:
+        await update.message.reply_text("👥 Не удалось найти участников.")
+        return
+    
+    # Фильтруем бота и текущего пользователя (опционально)
+    available = [m for m in members if m.id != context.bot.id]
+    if not available:
+        available = members
+    
+    target = random.choice(available)
+    name = group_utils.get_user_display_name(target)
+    
+    roasts = [
+        f"🔥 {name}, ты такой медленный, что твои мысли застревают в пробках! 🚗",
+        f"😅 {name}, если бы тупость была олимпийским видом спорта, ты бы взял золото! 🥇",
+        f"🤣 {name}, твой аватар выглядит умнее, чем ты!",
+        f"💀 {name}, ты единственный человек, который может потеряться в очереди из одного человека!",
+        f"😂 {name}, у тебя лицо как у подержанного автомобиля - много пробега и куча проблем! 🚗",
+        f"😆 {name}, твои шутки такие же острые, как мокрый носок! 🧦",
+        f"🎯 {name}, ты - живое доказательство того, что эволюция может ошибаться! 🧬"
+    ]
+    
+    message = random.choice(roasts)
+    await update.message.reply_text(message)
+    logger.info(f"🔥 Подкол участника {name} в чате {chat_id}")
+
+async def whip_command(update: Update, context: CallbackContext):
+    """Наказывает случайного участника"""
+    chat_id = update.effective_chat.id
+    
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Эта команда работает только в группах!")
+        return
+    
+    members = await group_utils.get_chat_members(context.bot, chat_id, update)
+    
+    if not members:
+        await update.message.reply_text("👥 Не удалось найти участников.")
+        return
+    
+    # Фильтруем бота
+    available = [m for m in members if m.id != context.bot.id]
+    if not available:
+        available = members
+    
+    target = random.choice(available)
+    name = group_utils.get_user_display_name(target)
+    
+    punishments = [
+        f"🔨 {name} получает 10 ударов плетью! 👋",
+        f"⚡ {name}, ты наказан! Теперь ты будешь мыть посуду неделю! 🧽",
+        f"😈 {name}, твоё наказание - написать 100 раз 'Я больше не буду шалить'! 📝",
+        f"💢 {name}, ты отправлен в угол на 30 минут! 🚫",
+        f"🎭 {name}, твоё наказание - станцевать ламбаду перед всей группой! 💃"
+    ]
+    
+    message = random.choice(punishments)
+    await update.message.reply_text(message)
+    logger.info(f"🔨 Наказание участника {name} в чате {chat_id}")
+
+async def slap_command(update: Update, context: CallbackContext):
+    """Один участник даёт пощёчину другому"""
+    chat_id = update.effective_chat.id
+    
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Эта команда работает только в группах!")
+        return
+    
+    members = await group_utils.get_chat_members(context.bot, chat_id, update)
+    
+    if len(members) < 2:
+        await update.message.reply_text("👥 Нужно минимум 2 человека для пощёчины!")
+        return
+    
+    # Выбираем агрессора и жертву
+    slapper, victim = random.sample(members, 2)
+    
+    name1 = group_utils.get_user_display_name(slapper)
+    name2 = group_utils.get_user_display_name(victim)
+    
+    actions = [
+        f"👋 {name1} дал(а) пощёчину {name2}! Звук был слышен на весь район! 💥",
+        f"🤚 {name1} отвесил(а) звонкую оплеуху {name2}! 😱",
+        f"💨 {name1} - БАЦ! {name2} получил(а) по лицу! 👋",
+        f"⚡ {name1} разозлился(ась) и влепил(а) {name2}! Берегитесь! 😡"
+    ]
+    
+    message = random.choice(actions)
+    await update.message.reply_text(message)
+    logger.info(f"👋 Пощёчина от {name1} к {name2} в чате {chat_id}")
+
+async def hug_command(update: Update, context: CallbackContext):
+    """Обнимашки между участниками"""
+    chat_id = update.effective_chat.id
+    
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Эта команда работает только в группах!")
+        return
+    
+    members = await group_utils.get_chat_members(context.bot, chat_id, update)
+    
+    if len(members) < 2:
+        await update.message.reply_text("👥 Нужен кто-то для обнимашек!")
+        return
+    
+    # Можно выбрать конкретного или случайного
+    if context.args:
+        # Если указан username
+        target_username = context.args[0].replace('@', '')
+        target_user = None
+        for m in members:
+            if m.username == target_username:
+                target_user = m
+                break
+        
+        if target_user:
+            hugger = update.effective_user
+            name1 = group_utils.get_user_display_name(hugger)
+            name2 = group_utils.get_user_display_name(target_user)
+        else:
+            # Если не найден, выбираем случайного
+            hugger, target = random.sample(members, 2)
+            name1 = group_utils.get_user_display_name(hugger)
+            name2 = group_utils.get_user_display_name(target)
+    else:
+        # Случайные участники
+        hugger, target = random.sample(members, 2)
+        name1 = group_utils.get_user_display_name(hugger)
+        name2 = group_utils.get_user_display_name(target)
+    
+    actions = [
+        f"🤗 {name1} обнял(а) {name2}! Так тепло! 🥰",
+        f"💕 {name1} и {name2} обнялись! Дружба победила! 🤝",
+        f"🫂 {name1} дарит {name2} крепкие объятия! ❤️",
+        f"😊 {name1} обнимает {name2} и желает хорошего дня! 🌟"
+    ]
+    
+    message = random.choice(actions)
+    await update.message.reply_text(message)
+    logger.info(f"🤗 Обнимашки между {name1} и {name2} в чате {chat_id}")
+
+async def betray_command(update: Update, context: CallbackContext):
+    """Выбирает предателя в группе"""
+    chat_id = update.effective_chat.id
+    
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Эта команда работает только в группах!")
+        return
+    
+    members = await group_utils.get_chat_members(context.bot, chat_id, update)
+    
+    if not members:
+        await update.message.reply_text("👥 Не удалось найти участников.")
+        return
+    
+    # Фильтруем бота
+    available = [m for m in members if m.id != context.bot.id]
+    if not available:
+        available = members
+    
+    traitor = random.choice(available)
+    name = group_utils.get_user_display_name(traitor)
+    
+    betrayals = [
+        f"🔪 {name} оказался предателем! Все против {name}! 😱",
+        f"💀 Шокирующая новость! {name} продал группу врагам! 🕵️",
+        f"⚠️ Внимание! {name} - двойной агент! Вычислили! 🎯",
+        f"🏴‍☠️ {name} украл все печеньки из секретной комнаты! Позор! 🍪"
+    ]
+    
+    message = random.choice(betrayals)
+    await update.message.reply_text(message)
+    logger.info(f"🔪 Предатель {name} обнаружен в чате {chat_id}")
+
 
 async def start_command(update: Update, context: CallbackContext):
     """Приветствие при добавлении бота в группу"""
