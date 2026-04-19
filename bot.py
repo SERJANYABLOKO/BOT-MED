@@ -632,12 +632,22 @@ def setup_application():
     app.add_handler(CommandHandler("penis", penis_command))
     app.add_handler(CommandHandler("collect_photos", collect_photos_command))
     
+    # НОВЫЕ КОМАНДЫ
+    app.add_handler(CommandHandler("drink", drink_command))
+    app.add_handler(CommandHandler("kiss", kiss_command))
+    app.add_handler(CommandHandler("fight", fight_command))
+    app.add_handler(CommandHandler("marry", marry_command))
+    app.add_handler(CommandHandler("roast", roast_command))
+    app.add_handler(CommandHandler("whip", whip_command))
+    app.add_handler(CommandHandler("slap", slap_command))
+    app.add_handler(CommandHandler("hug", hug_command))
+    app.add_handler(CommandHandler("betray", betray_command))
+    
     # Обработчики
     app.add_handler(MessageHandler(filters.PHOTO, handle_new_photo))
     app.add_handler(ChatMemberHandler(status_handler, ChatMemberHandler.CHAT_MEMBER))
     
     return app
-
 # ======================
 # Webhook обработчики для aiohttp
 # ======================
