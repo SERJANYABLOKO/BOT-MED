@@ -60,6 +60,34 @@ async def drink_command(update: Update, context: CallbackContext):
     await update.message.reply_text(message)
     logger.info(f"🍺 Выбран покупатель алкоголя: {name} в чате {chat_id}")
 
+async def porno_command(update: Update, context: CallbackContext):
+    """Провокационная команда про Илью, Эдика, Аслана и Злату"""
+    chat_id = update.effective_chat.id
+    
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Эта команда работает только в группах!")
+        return
+    
+    # Список возможных сообщений
+    actions = [
+        "🔥 Илья, Эдик и Аслан выебали Злату втроём! 🍆💦",
+        "😈 Злата получила свою порцию от Ильи, Эдика и Аслана! 👊🍑",
+        "💥 Илья забил первый, Эдик продолжил, Аслан добил - Злата в шоке! 😱",
+        "🥵 Злата не ожидала такого жёсткого трио от Ильи, Эдика и Аслана! 🍌🍌🍌",
+        "😏 Илья, Эдик и Аслан устроили Злате ночь, которую она не забудет! 🔥",
+        "💢 Злата кричала, пока Илья, Эдик и Аслан делали своё дело! 😫💦",
+        "🍆🍆🍆 Илья, Эдик и Аслан показали Злате, что такое настоящий мужской подход! 💪",
+        "🔥🛏️ Злата была разорвана в клочья Ильёй, Эдиком и Асланом! 💀",
+        "😈 Сегодня Злата - главная звезда взрослого кино в компании Ильи, Эдика и Аслана! 🎬🔥",
+        "💦 Трое против одной: Илья, Эдик и Аслан не оставили от Златы мокрого места! 🌊"
+    ]
+    
+    # Выбираем случайное сообщение
+    message = random.choice(actions)
+    
+    await update.message.reply_text(message)
+    logger.info(f"🔞 Команда /porno использована в чате {chat_id}")
+
 async def kiss_command(update: Update, context: CallbackContext):
     """Романтический поцелуй между двумя участниками"""
     chat_id = update.effective_chat.id
