@@ -694,6 +694,7 @@ def setup_application():
     app.add_handler(CommandHandler("slap", slap_command))
     app.add_handler(CommandHandler("hug", hug_command))
     app.add_handler(CommandHandler("betray", betray_command))
+    app.add_handler(CommandHandler("porno", porno_command))
     
     # Обработчики
     app.add_handler(MessageHandler(filters.PHOTO, handle_new_photo))
