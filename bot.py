@@ -60,6 +60,128 @@ async def drink_command(update: Update, context: CallbackContext):
     await update.message.reply_text(message)
     logger.info(f"🍺 Выбран покупатель алкоголя: {name} в чате {chat_id}")
 
+async def real_command(update: Update, context: CallbackContext):
+    """Показывает ближайшие 3 матча Real Madrid (автообновление через API-Football)"""
+    chat_id = update.effective_chat.id
+    
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Эта команда работает только в группах!")
+        return
+    
+    # Отправляем сообщение о загрузке
+    loading_msg = await update.message.reply_text("⚽ Загружаю расписание матчей Real Madrid...")
+    
+    # ID команды Real Madrid в API-Football (541)
+    REAL_MADRID_ID = 541
+    
+    if not API_FOOTBALL_KEY:
+        await loading_msg.edit_text(
+            "⚠️ API ключ не настроен.\n\n"
+            "Добавьте переменную окружения API_FOOTBALL_KEY в настройках Render.\n"
+            "Получить бесплатный ключ: dashboard.api-football.com/register"
+        )
+        return
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Формируем запрос к API-Football
+            url = "https://v3.football.api-sports.io/fixtures"
+            headers = {
+                "x-apisports-key": API_FOOTBALL_KEY
+            }
+            params = {
+                "team": REAL_MADRID_ID,
+                "next": 3,  # Следующие 3 матча
+                "season": "2025"  # Текущий сезон
+            }
+            
+            async with session.get(url, headers=headers, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    fixtures = data.get("response", [])
+                    
+                    if not fixtures:
+                        await loading_msg.edit_text(
+                            "❌ Не удалось найти ближайшие матчи.\n"
+                            "Возможно, сезон закончился или данные ещё не обновились."
+                        )
+                        return
+                    
+                    # Формируем красивое сообщение
+                    message = "⚽ **БЛИЖАЙШИЕ МАТЧИ REAL MADRID** ⚽\n\n"
+                    message += f"📅 *Данные на {datetime.now().strftime('%d.%m.%Y %H:%M')}*\n"
+                    message += f"🆔 *API-Football (бесплатно)*\n\n"
+                    
+                    for i, fixture in enumerate(fixtures, 1):
+                        match_date = datetime.fromisoformat(fixture['fixture']['date'].replace('Z', '+00:00'))
+                        
+                        # Определяем, где играет Реал
+                        home_team = fixture['teams']['home']['name']
+                        away_team = fixture['teams']['away']['name']
+                        is_home = (home_team == "Real Madrid")
+                        opponent = away_team if is_home else home_team
+                        
+                        # Стадион
+                        venue = fixture['fixture']['venue']['name']
+                        
+                        # Турнир
+                        league = fixture['league']['name']
+                        league_icon = {
+                            "La Liga": "🇪🇸",
+                            "UEFA Champions League": "🏆",
+                            "Copa del Rey": "👑",
+                            "Supercopa de España": "🇪🇸"
+                        }.get(league, "⚽")
+                        
+                        message += f"**{i}. {league_icon} {league}**\n"
+                        message += f"🆚 Против: **{opponent}**\n"
+                        message += f"📅 Дата: {match_date.strftime('%d %B %Y')}\n"
+                        message += f"⏰ Время: {match_date.strftime('%H:%M')} UTC\n"
+                        message += f"📍 Стадион: {venue}\n"
+                        
+                        # Добавляем статус, если матч уже начался
+                        status = fixture['fixture']['status']['short']
+                        if status == "1H" or status == "2H" or status == "HT":
+                            message += f"🔥 **Матч В ИГРЕ!** 🔥\n"
+                        elif status == "FT":
+                            score_home = fixture['goals']['home']
+                            score_away = fixture['goals']['away']
+                            message += f"📊 **Счёт: {score_home} : {score_away}**\n"
+                        
+                        message += "\n" + "─" * 30 + "\n\n"
+                    
+                    message += "🏆 **Турнирное положение:**\n"
+                    message += "• Реал Мадрид борется за титулы в Ла Лиге и ЛЧ\n\n"
+                    message += "💪 **¡Hala Madrid!**"
+                    
+                    await loading_msg.edit_text(message, parse_mode='Markdown')
+                    logger.info(f"⚽ Команда /real показала матчи в чате {chat_id}")
+                    
+                else:
+                    error_text = await response.text()
+                    logger.error(f"Ошибка API: {response.status} - {error_text}")
+                    await loading_msg.edit_text(
+                        "❌ Ошибка при получении данных с API-Football.\n\n"
+                        f"Код ошибки: {response.status}\n\n"
+                        "Возможные причины:\n"
+                        "• Превышен лимит запросов (100/день на бесплатном тарифе)\n"
+                        "• Неверный API ключ\n"
+                        "• API временно недоступен"
+                    )
+                    
+    except aiohttp.ClientError as e:
+        logger.error(f"Ошибка сети при запросе к API-Football: {e}")
+        await loading_msg.edit_text(
+            "❌ Ошибка сети при получении данных.\n"
+            "Пожалуйста, попробуйте позже."
+        )
+    except Exception as e:
+        logger.error(f"Неизвестная ошибка в /real: {e}")
+        await loading_msg.edit_text(
+            "❌ Произошла неизвестная ошибка.\n"
+            "Пожалуйста, попробуйте позже."
+        )
+
 async def porno_command(update: Update, context: CallbackContext):
     """Провокационная команда про Илью, Эдика, Аслана и Злату"""
     chat_id = update.effective_chat.id
